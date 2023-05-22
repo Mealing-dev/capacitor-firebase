@@ -25,10 +25,8 @@ import java.util.List;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-@CapacitorPlugin(
-    name = "FirebaseMessaging",
-    permissions = @Permission(strings = { Manifest.permission.POST_NOTIFICATIONS }, alias = FirebaseMessagingPlugin.PUSH_NOTIFICATIONS)
-)
+@CapacitorPlugin(name = "FirebaseMessaging", permissions = @Permission(strings = {
+        Manifest.permission.POST_NOTIFICATIONS }, alias = FirebaseMessagingPlugin.PUSH_NOTIFICATIONS))
 public class FirebaseMessagingPlugin extends Plugin {
 
     public static final String PUSH_NOTIFICATIONS = "receive";
@@ -127,20 +125,19 @@ public class FirebaseMessagingPlugin extends Plugin {
     public void getToken(PluginCall call) {
         try {
             implementation.getToken(
-                new GetTokenResultCallback() {
-                    @Override
-                    public void success(String token) {
-                        JSObject result = new JSObject();
-                        result.put("token", token);
-                        call.resolve(result);
-                    }
+                    new GetTokenResultCallback() {
+                        @Override
+                        public void success(String token) {
+                            JSObject result = new JSObject();
+                            result.put("token", token);
+                            call.resolve(result);
+                        }
 
-                    @Override
-                    public void error(String message) {
-                        call.reject(message);
-                    }
-                }
-            );
+                        @Override
+                        public void error(String message) {
+                            call.reject(message);
+                        }
+                    });
         } catch (Exception exception) {
             Logger.error(TAG, exception.getMessage(), exception);
             call.reject(exception.getMessage());
@@ -265,9 +262,8 @@ public class FirebaseMessagingPlugin extends Plugin {
                 return;
             }
             NotificationChannel notificationChannel = FirebaseMessagingHelper.createNotificationChannelFromPluginCall(
-                call,
-                getContext().getPackageName()
-            );
+                    call,
+                    getContext().getPackageName());
             if (notificationChannel == null) {
                 call.reject(ERROR_ID_OR_NAME_MISSING);
                 return;
@@ -337,7 +333,43 @@ public class FirebaseMessagingPlugin extends Plugin {
     private void handleNotificationReceived(@NonNull RemoteMessage remoteMessage) {
         JSObject notificationResult = FirebaseMessagingHelper.createNotificationResult(remoteMessage);
         JSObject result = new JSObject();
+        Log.i("RECEIVE PUSH", "PUSH");
+        JSArray notificationsResult = new JSArray();
+        StatusBarNotification[] activeNotifications = implementation.getDeliveredNotifications();
+        for (StatusBarNotification activeNotification : activeNotifications) {
+            notificationsResult.put(notificationResult);
+        }
         result.put("notification", notificationResult);
+        Bundle bundle = null;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            try {
+                ApplicationInfo applicationInfo = getContext()
+                        .getPackageManager()
+                        .getApplicationInfo(
+                                getContext().getPackageName(),
+                                PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA));
+                bundle = applicationInfo.metaData;
+            } catch (PackageManager.NameNotFoundException e) {
+                e.printStackTrace();
+            }
+        } else {
+            bundle = getBundleLegacy();
+        }
+        int pushIcon = android.R.drawable.ic_dialog_info;
+
+        if (bundle != null && bundle.getInt("com.google.firebase.messaging.default_notification_icon") != 0) {
+            pushIcon = bundle.getInt("com.google.firebase.messaging.default_notification_icon");
+        }
+        Notification notification = new NotificationCompat.Builder(getContext(), "knewnew_app_channel")
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setContentTitle(remoteMessage.getNotification().getTitle())
+                .setContentText(remoteMessage.getNotification().getBody())
+                .setSmallIcon(pushIcon)
+                .setDefaults(Notification.DEFAULT_SOUND | Notification.DEFAULT_VIBRATE)
+                .build();
+
+        NotificationManagerCompat manager = NotificationManagerCompat.from(getContext());
+        manager.notify(0, notification);
         notifyListeners(NOTIFICATION_RECEIVED_EVENT, result, true);
     }
 
